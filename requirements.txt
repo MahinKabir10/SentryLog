@@ -1,0 +1,13 @@
+# SentryLog dependencies
+# -----------------------
+# The CORE pipeline (Linux auth parsing, normalization, CLI, summary tables)
+# runs on the Python standard library ALONE -- nothing below is needed for it.
+#
+# python-evtx is required ONLY for the Windows .evtx parser
+# (sentrylog/parsers/windows_evtx.py). It is imported lazily, so SentryLog
+# still runs fine without it until you actually ingest a .evtx file.
+python-evtx>=0.7.4
+
+# Dev/test (optional): the test-suite is written to also run without pytest
+# (python tests/test_linux_auth.py), but pytest gives nicer output.
+# pytest>=7.0

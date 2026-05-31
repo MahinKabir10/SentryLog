@@ -1,0 +1,16 @@
+May 27 08:14:02 ubuntu-web-01 sshd[2025]: Accepted password for deploy from 203.0.113.42 port 51234 ssh2
+May 27 08:15:48 ubuntu-web-01 sshd[2031]: Accepted publickey for admin from 198.51.100.9 port 49002 ssh2: RSA SHA256:9d8f7a6b5c4d3e2f1a0b9c8d7e6f5a4b3c2d1e0f
+May 27 08:16:10 ubuntu-web-01 sshd[2044]: Failed password for root from 45.155.205.233 port 40110 ssh2
+May 27 08:16:12 ubuntu-web-01 sshd[2044]: Failed password for root from 45.155.205.233 port 40124 ssh2
+May 27 08:16:15 ubuntu-web-01 sshd[2044]: Failed password for root from 45.155.205.233 port 40140 ssh2
+May 27 08:16:20 ubuntu-web-01 sshd[2050]: Invalid user oracle from 45.155.205.233 port 40190
+May 27 08:16:20 ubuntu-web-01 sshd[2050]: Failed password for invalid user oracle from 45.155.205.233 port 40190 ssh2
+May 27 08:16:25 ubuntu-web-01 sshd[2055]: Invalid user postgres from 45.155.205.233 port 40233
+May 27 08:16:25 ubuntu-web-01 sshd[2055]: Failed password for invalid user postgres from 45.155.205.233 port 40233 ssh2
+May 27 08:20:01 ubuntu-web-01 CRON[2101]: pam_unix(cron:session): session opened for user root by (uid=0)
+May 27 08:22:33 ubuntu-web-01 sudo:   deploy : TTY=pts/0 ; PWD=/home/deploy ; USER=root ; COMMAND=/usr/bin/systemctl restart nginx
+May 27 08:23:01 ubuntu-web-01 sudo:   intern : user NOT in sudoers ; TTY=pts/1 ; PWD=/home/intern ; USER=root ; COMMAND=/usr/bin/apt update
+May 27 08:25:14 ubuntu-web-01 sshd[2090]: Accepted password for deploy from 203.0.113.42 port 51290 ssh2
+May 27 08:26:40 ubuntu-web-01 sshd[2090]: Received disconnect from 203.0.113.42 port 51290:11: disconnected by user
+May 27 08:30:00 ubuntu-web-01 systemd[1]: Started Session 42 of user deploy.
+this line is deliberately malformed and should be counted as an error, not crash the parser

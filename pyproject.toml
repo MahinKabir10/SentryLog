@@ -1,0 +1,29 @@
+[build-system]
+requires = ["setuptools>=61"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "sentrylog"
+version = "0.1.0"
+description = "A minimal SIEM. Phase 1: log ingestion and normalization."
+readme = "README.md"
+requires-python = ">=3.9"
+license = { text = "MIT" }
+authors = [{ name = "Kabir" }]
+keywords = ["siem", "security", "logs", "ingestion", "normalization", "evtx", "syslog"]
+
+# Core has NO runtime dependencies -- it's standard-library only. python-evtx is
+# an optional extra, pulled in only when you need the Windows parser:
+#     pip install -e ".[evtx]"
+dependencies = []
+
+[project.optional-dependencies]
+evtx = ["python-evtx>=0.7.4"]
+dev = ["pytest>=7.0"]
+
+# Installs a real `sentrylog` command on PATH that calls sentrylog.cli:main.
+[project.scripts]
+sentrylog = "sentrylog.cli:main"
+
+[tool.setuptools.packages.find]
+include = ["sentrylog*"]
