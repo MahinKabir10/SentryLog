@@ -38,6 +38,7 @@ SentryLog/
 │   ├── __main__.py            # enables `python -m sentrylog`
 │   ├── event.py               # the normalized Event schema (the contract)
 │   ├── detect.py              # --type auto source detection
+│   ├── analysis.py            # failed-login extraction, brute-force detection, summaries
 │   ├── table.py               # dependency-free terminal table renderer
 │   ├── cli.py                 # argparse CLI: `sentrylog ingest ...`
 │   └── parsers/
@@ -45,6 +46,9 @@ SentryLog/
 │       ├── base.py            # ParseResult / ParseStats / UnparseableLine
 │       ├── linux_auth.py      # /var/log/auth.log parser (sshd, sudo)
 │       └── windows_evtx.py    # Windows .evtx parser (python-evtx)
+├── sentrylog_mcp.py           # MCP server exposing the analysis as tools
+├── samples/
+│   └── auth.log               # richer sample for the MCP tools (incl. brute force)
 ├── sample_logs/
 │   └── auth.log               # realistic mixed-outcome sample (runs OOTB)
 ├── tests/
@@ -191,9 +195,75 @@ an end-to-end count check against the shipped sample.
 
 ---
 
+## MCP Server
+
+SentryLog also ships as an **MCP server** — a bridge that lets an AI assistant
+(e.g. Claude Desktop) call SentryLog's log-analysis functions as tools, so you
+can investigate an `auth.log` conversationally ("who's brute-forcing this box?").
+
+The server is [`sentrylog_mcp.py`](sentrylog_mcp.py) in the repo root and
+builds on [`sentrylog/analysis.py`](sentrylog/analysis.py). All tools are
+**read-only** (declared via `readOnlyHint` annotations) and validate inputs
+with Pydantic.
+
+### Tools
+
+| Tool | Arguments | What it returns |
+|------|-----------|-----------------|
+| `list_failed_logins` | `log_path`, `limit` (default 20) | Failed SSH login attempts (incl. `Invalid user` notices) with timestamp, user, source IP, port, and raw line. |
+| `detect_bruteforce` | `log_path`, `threshold` (default 5) | Source IPs with ≥ `threshold` failed logins: failure count, targeted users, invalid-user attempts, first/last seen. |
+| `summarize_log` | `log_path` | Top source IPs, top targeted users (by *failed* logins), event counts by action/outcome, time range, parse stats. |
+
+Every response includes the parse statistics, and errors are actionable — a
+missing file reports the exact path that was tried and points at the shipped
+sample (`samples/auth.log`).
+
+### Install
+
+```powershell
+pip install "mcp[cli]"
+```
+
+That's the only dependency — the analysis itself is standard-library only.
+
+### Try it without a client
+
+```powershell
+# from the SentryLog/ directory
+python -c "from sentrylog_mcp import summarize_log; import json; print(json.dumps(summarize_log(r'samples\auth.log'), indent=2))"
+```
+
+### Connect it to Claude Desktop
+
+Add the server to `claude_desktop_config.json`
+(**Settings → Developer → Edit Config**, or directly at
+`%APPDATA%\Claude\claude_desktop_config.json` on Windows):
+
+```json
+{
+  "mcpServers": {
+    "sentrylog": {
+      "command": "python",
+      "args": ["C:\\Cyber Security Projects\\SentryLog\\sentrylog_mcp.py"]
+    }
+  }
+}
+```
+
+If `python` isn't on Claude Desktop's PATH, use the full interpreter path as
+`command` (find yours with `(Get-Command python).Source` in PowerShell).
+Restart Claude Desktop and the three tools appear under the **sentrylog**
+server. Ask something like:
+
+> *Summarize C:\Cyber Security Projects\SentryLog\samples\auth.log — any brute-force activity?*
+
+---
+
 ## Roadmap
 
 - **Phase 1 — ingestion & normalization** ✅ *(this repo)*
 - **Phase 2 — detection** — correlation rules over the normalized stream
   (brute-force, impossible-travel, privilege-escalation chains).
+  *First slice shipped:* `sentrylog/analysis.py` (failed-login extraction,
+  threshold-based brute-force detection) exposed via the MCP server above.
 - Later — more sources, persistent storage, alert routing.
