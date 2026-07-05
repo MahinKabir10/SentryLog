@@ -3,12 +3,13 @@
 A minimal **SIEM** (Security Information and Event Management) tool, built in
 phases.
 
-> **Phase 1 (this repo): ingestion & normalization only.**
-> SentryLog reads raw logs from different sources and converts every one of them
-> into a single, strict, normalized event schema. **There is no detection logic
-> yet** — alerting and correlation rules are Phase 2. Phase 1 is the foundation
-> everything else stands on: get the normalization right and every future rule
-> works across every source for free.
+> **Phase 1: ingestion & normalization. Phase 2: detection. Both live here.**
+> SentryLog reads raw logs from different sources and converts every one of
+> them into a single, strict, normalized event schema (Phase 1), then runs
+> detection rules over that normalized stream and emits severity-tiered alerts
+> (Phase 2). Because rules only ever see normalized events, one brute-force
+> rule fires identically on an SSH attack and an RDP attack — get the
+> normalization right and every rule works across every source for free.
 
 ---
 
@@ -41,18 +42,27 @@ SentryLog/
 │   ├── analysis.py            # failed-login extraction, brute-force detection, summaries
 │   ├── table.py               # dependency-free terminal table renderer
 │   ├── cli.py                 # argparse CLI: `sentrylog ingest ...`
-│   └── parsers/
-│       ├── __init__.py        # parser registry (SourceType -> parse_file)
-│       ├── base.py            # ParseResult / ParseStats / UnparseableLine
-│       ├── linux_auth.py      # /var/log/auth.log parser (sshd, sudo)
-│       └── windows_evtx.py    # Windows .evtx parser (python-evtx)
-├── sentrylog_mcp.py           # MCP server exposing the analysis as tools
+│   ├── parsers/
+│   │   ├── __init__.py        # parser registry (SourceType -> parse_file)
+│   │   ├── base.py            # ParseResult / ParseStats / UnparseableLine
+│   │   ├── linux_auth.py      # /var/log/auth.log parser (sshd, sudo)
+│   │   └── windows_evtx.py    # Windows .evtx parser (python-evtx)
+│   └── detection/             # Phase 2: the detection layer
+│       ├── __init__.py        # rule registry (default_rules factory)
+│       ├── alert.py           # Alert dataclass + Severity tiers (the contract)
+│       ├── base.py            # Rule interface (analyze(events) -> Alerts)
+│       ├── engine.py          # sorts the stream, runs rules, ranks alerts
+│       ├── brute_force.py     # sliding-window failed-login bursts per IP
+│       ├── privilege_escalation.py  # sudo + Win 4672/4720/4732, tiered
+│       └── compromise.py      # failed logins then a success from the same IP
+├── sentrylog_mcp.py           # MCP server exposing analysis + detection as tools
 ├── samples/
-│   └── auth.log               # richer sample for the MCP tools (incl. brute force)
+│   └── auth.log               # demo sample: every rule fires (all 4 severities)
 ├── sample_logs/
 │   └── auth.log               # realistic mixed-outcome sample (runs OOTB)
 ├── tests/
-│   └── test_linux_auth.py     # unit + end-to-end tests for the Linux parser
+│   ├── test_linux_auth.py     # unit + end-to-end tests for the Linux parser
+│   └── test_detection.py      # rule unit tests incl. window edges, cross-OS firing
 ├── requirements.txt
 ├── pyproject.toml             # installs the `sentrylog` console script
 ├── .gitignore
@@ -195,6 +205,56 @@ an end-to-end count check against the shipped sample.
 
 ---
 
+## Detection (Phase 2)
+
+Detection runs **only** on normalized `Event` objects — never raw logs. The
+engine ([`detection/engine.py`](sentrylog/detection/engine.py)) sorts the
+stream once and fans it out to rules; each rule is a single-pass state machine
+implementing `analyze(events) -> Iterator[Alert]`. Adding a rule is one module
+plus one line in `default_rules()` ([`detection/__init__.py`](sentrylog/detection/__init__.py))
+— the engine, CLI, and MCP server never change.
+
+### The rules
+
+| Rule | Fires on | Severity |
+|------|----------|----------|
+| `brute_force` | ≥ X failed logins from one IP in a Y-second **sliding** window (default 5 in 60s). One alert **per burst**, not per event. | medium; **high** on ≥3× volume or a multi-user spray |
+| `privilege_escalation` | sudo failures/successes, Win 4672 / 4720 / 4732 | failed sudo & 4720: **medium**; 4732 into an admin-equivalent group: **high**; routine sudo/4672 successes: **low**, aggregated per user+host |
+| `compromise` | ≥ N failed logins from an IP followed by a **success** from that same IP within a window (default 3 in 600s) | **critical** — the attack worked |
+
+Design notes worth reading in the module docstrings: why the window slides
+instead of tumbling, why the boundary is inclusive, why bursts emit one alert
+(alert fatigue), why routine elevation aggregates to a single low-severity
+audit entry instead of paging, and why only realized compromise earns
+`critical`.
+
+Every alert carries `rule_name`, `severity`, `timestamp`, `source_ip`, `user`,
+`description`, and the full `matched_events` evidence chain (each event still
+holding its raw log line — the pivot back to ground truth is never lost).
+
+### Run it
+
+```powershell
+python -m sentrylog detect samples/auth.log --show-events
+```
+
+The shipped sample trips **all four severity tiers**: a critical compromise
+(192.0.2.146 fails three times then gets in), a high password spray
+(45.155.205.233, 12 failures across 5 users), a medium sudo denial (`intern`),
+and a low audit trail (`deploy`'s sudo).
+
+Multiple files — even mixed OSes — merge into one chronological stream, so a
+single rule correlates across sources:
+
+```powershell
+python -m sentrylog detect auth.log security.evtx
+```
+
+Tunables: `--bf-threshold/--bf-window` (brute force), `--cf-min-failures/--cf-window`
+(compromise), `--min-severity` to filter output, `--show-events` for evidence.
+
+---
+
 ## MCP Server
 
 SentryLog also ships as an **MCP server** — a bridge that lets an AI assistant
@@ -208,11 +268,16 @@ with Pydantic.
 
 ### Tools
 
+All tools accept Linux `auth.log` **or** Windows `.evtx` paths (format is
+sniffed; EVTX needs `pip install python-evtx`).
+
 | Tool | Arguments | What it returns |
 |------|-----------|-----------------|
-| `list_failed_logins` | `log_path`, `limit` (default 20) | Failed SSH login attempts (incl. `Invalid user` notices) with timestamp, user, source IP, port, and raw line. |
-| `detect_bruteforce` | `log_path`, `threshold` (default 5) | Source IPs with ≥ `threshold` failed logins: failure count, targeted users, invalid-user attempts, first/last seen. |
+| `list_failed_logins` | `log_path`, `limit` (default 20) | Failed login attempts (incl. `Invalid user` notices) with timestamp, user, source IP, port, and raw line. |
 | `summarize_log` | `log_path` | Top source IPs, top targeted users (by *failed* logins), event counts by action/outcome, time range, parse stats. |
+| `detect_bruteforce` | `log_path`, `threshold` (5), `window_seconds` (60) | Sliding-window brute-force alerts, one per burst, with severity and the evidence chain. |
+| `detect_privesc` | `log_path` | Privilege-escalation alerts: sudo denials, account creation (4720), privileged-group additions (4732), aggregated routine elevation. |
+| `list_alerts` | `log_path`, `min_severity` (`low`) | Runs **all** rules (incl. the critical failed-then-success compromise rule); triage-ordered alerts plus counts per severity. |
 
 Every response includes the parse statistics, and errors are actionable — a
 missing file reports the exact path that was tried and points at the shipped
@@ -261,9 +326,9 @@ server. Ask something like:
 
 ## Roadmap
 
-- **Phase 1 — ingestion & normalization** ✅ *(this repo)*
-- **Phase 2 — detection** — correlation rules over the normalized stream
-  (brute-force, impossible-travel, privilege-escalation chains).
-  *First slice shipped:* `sentrylog/analysis.py` (failed-login extraction,
-  threshold-based brute-force detection) exposed via the MCP server above.
-- Later — more sources, persistent storage, alert routing.
+- **Phase 1 — ingestion & normalization** ✅
+- **Phase 2 — detection** ✅ — rule engine + brute-force, privilege-escalation,
+  and compromise rules over the normalized stream, with severity-tiered alerts
+  (`sentrylog detect`, MCP tools).
+- Later — more rules (impossible travel, beaconing), more sources, persistent
+  storage, alert routing.

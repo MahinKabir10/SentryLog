@@ -7,16 +7,24 @@ with the third-party ``python-evtx`` library, renders each record to XML, and
 maps the security Event IDs we care about into normalized
 :class:`~sentrylog.event.Event` objects.
 
-Event IDs mapped in Phase 1 (the bread-and-butter of host auth telemetry):
+Event IDs mapped (Phase 1 auth telemetry + Phase 2 account manipulation):
 
-===== ============================ ============ ==========
-ID    Meaning                      action       outcome
-===== ============================ ============ ==========
-4624  An account logged on         login        success
-4625  An account failed to log on  login        failure
-4672  Special privileges assigned  priv-esc     success
-4688  A new process was created    proc-create  unknown
-===== ============================ ============ ==========
+===== ================================== ============ ==========
+ID    Meaning                            action       outcome
+===== ================================== ============ ==========
+4624  An account logged on               login        success
+4625  An account failed to log on        login        failure
+4672  Special privileges assigned        priv-esc     success
+4688  A new process was created          proc-create  unknown
+4720  A user account was created         acct-mgmt    success
+4732  Member added to security group     priv-esc     success
+===== ================================== ============ ==========
+
+Why 4720 is ``account_management`` but 4732 is ``privilege_escalation``:
+being added to a (privileged) group is a *durable* rights grant -- the member
+walks away more powerful. Creating an account grants nothing by itself; it is
+the classic persistence-staging step (MITRE T1136) that *precedes* elevation.
+The detection layer scores them differently, so the mapping keeps them apart.
 
 Why ``unknown`` for 4688? Process creation isn't an auth pass/fail -- it simply
 occurred. The schema has a first-class ``UNKNOWN`` outcome exactly so we can say
@@ -54,8 +62,8 @@ logger = logging.getLogger(__name__)
 # it once keeps the find() calls readable.
 _NS = "{http://schemas.microsoft.com/win/2004/08/events/event}"
 
-# The four Event IDs we normalize in Phase 1. Anything else is "skipped".
-_MAPPED_IDS = {"4624", "4625", "4672", "4688"}
+# The Event IDs we normalize. Anything else is "skipped".
+_MAPPED_IDS = {"4624", "4625", "4672", "4688", "4720", "4732"}
 
 # Windows logon types are integers; the friendly name is what an analyst reads.
 # Type 3 (Network) vs 10 (RemoteInteractive/RDP) is, for example, the difference
@@ -294,6 +302,50 @@ def _build_event(
             host=host,
             user=_clean(data.get("SubjectUserName")),
             source_ip=source_ip,
+            metadata={k: v for k, v in metadata.items() if v is not None},
+        )
+
+    if event_id == "4720":  # a user account was created
+        # Subject = who did the creating (the actor -- same convention as sudo,
+        # where `user` is the invoker); Target = the account brought into being.
+        metadata = {
+            "new_account": _clean(data.get("TargetUserName")),
+            "new_account_domain": data.get("TargetDomainName"),
+            "domain": data.get("SubjectDomainName"),
+        }
+        return Event(
+            timestamp=timestamp,
+            source_type=SourceType.WINDOWS_EVTX,
+            action=Action.ACCOUNT_MANAGEMENT,
+            outcome=Outcome.SUCCESS,
+            raw=raw,
+            event_id="4720",
+            host=host,
+            user=_clean(data.get("SubjectUserName")),
+            source_ip=None,           # account management is logged locally
+            metadata={k: v for k, v in metadata.items() if v is not None},
+        )
+
+    if event_id == "4732":  # a member was added to a security-enabled local group
+        # Subject = who performed the add; TargetUserName is (confusingly) the
+        # GROUP name in this event; the added member arrives as MemberName
+        # (DN form) or only as MemberSid on some systems -- keep whichever exists.
+        metadata = {
+            "group": _clean(data.get("TargetUserName")),
+            "group_domain": data.get("TargetDomainName"),
+            "member": _clean(data.get("MemberName")) or _clean(data.get("MemberSid")),
+            "domain": data.get("SubjectDomainName"),
+        }
+        return Event(
+            timestamp=timestamp,
+            source_type=SourceType.WINDOWS_EVTX,
+            action=Action.PRIVILEGE_ESCALATION,
+            outcome=Outcome.SUCCESS,
+            raw=raw,
+            event_id="4732",
+            host=host,
+            user=_clean(data.get("SubjectUserName")),
+            source_ip=None,
             metadata={k: v for k, v in metadata.items() if v is not None},
         )
 

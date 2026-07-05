@@ -14,6 +14,7 @@ May 27 08:16:37 ubuntu-web-01 sshd[2061]: Failed password for admin from 45.155.
 May 27 08:16:44 ubuntu-web-01 sshd[2063]: Failed password for admin from 45.155.205.233 port 40312 ssh2
 May 27 08:18:02 ubuntu-web-01 sshd[2070]: Failed password for deploy from 192.0.2.146 port 55021 ssh2
 May 27 08:18:30 ubuntu-web-01 sshd[2072]: Failed password for deploy from 192.0.2.146 port 55040 ssh2
+May 27 08:18:49 ubuntu-web-01 sshd[2074]: Failed password for deploy from 192.0.2.146 port 55051 ssh2
 May 27 08:19:07 ubuntu-web-01 sshd[2075]: Accepted password for deploy from 192.0.2.146 port 55063 ssh2
 May 27 08:20:01 ubuntu-web-01 CRON[2101]: pam_unix(cron:session): session opened for user root by (uid=0)
 May 27 08:22:33 ubuntu-web-01 sudo:   deploy : TTY=pts/0 ; PWD=/home/deploy ; USER=root ; COMMAND=/usr/bin/systemctl restart nginx

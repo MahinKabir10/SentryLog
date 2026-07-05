@@ -4,8 +4,8 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "sentrylog"
-version = "0.1.0"
-description = "A minimal SIEM. Phase 1: log ingestion and normalization."
+version = "0.2.0"
+description = "A minimal SIEM: log ingestion & normalization plus a rule-based detection engine."
 readme = "README.md"
 requires-python = ">=3.9"
 license = { text = "MIT" }

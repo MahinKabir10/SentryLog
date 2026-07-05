@@ -76,8 +76,13 @@ class Action(str, Enum):
 
     LOGIN = "login"                          # an authentication attempt
     LOGOUT = "logout"                        # a session teardown
-    PRIVILEGE_ESCALATION = "privilege_escalation"  # sudo, Win 4672, runas
+    PRIVILEGE_ESCALATION = "privilege_escalation"  # sudo, Win 4672/4732, runas
     PROCESS_CREATION = "process_creation"    # Win 4688, execve-style events
+    ACCOUNT_MANAGEMENT = "account_management"  # Win 4720, useradd: accounts
+    #   created/modified. Deliberately NOT privilege_escalation: creating an
+    #   account is persistence-staging, not an elevation by itself. Detection
+    #   rules weigh the two differently, so conflating them here would destroy
+    #   information the schema exists to preserve.
     OTHER = "other"                          # recognized but uncategorized
 
 
