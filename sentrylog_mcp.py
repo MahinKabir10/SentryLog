@@ -27,7 +27,7 @@ Run directly (stdio transport, which is what Claude Desktop speaks):
 
     python sentrylog_mcp.py
 
-Requires: pip install "mcp[cli]"
+Requires: pip install "mcp[cli]<2"   (mcp 2.x renamed FastMCP; built/tested on 1.x)
 """
 
 from __future__ import annotations

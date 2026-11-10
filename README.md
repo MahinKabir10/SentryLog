@@ -286,10 +286,12 @@ sample (`samples/auth.log`).
 ### Install
 
 ```powershell
-pip install "mcp[cli]"
+pip install "mcp[cli]<2"
 ```
 
-That's the only dependency — the analysis itself is standard-library only.
+That's the only dependency — the analysis itself is standard-library only. The
+`<2` pin is deliberate: `mcp` 2.x reorganized the SDK (FastMCP was renamed), so
+the server needs the 1.x line it was built and tested against (1.28).
 
 ### Try it without a client
 

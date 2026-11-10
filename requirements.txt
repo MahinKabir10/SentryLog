@@ -8,6 +8,11 @@
 # still runs fine without it until you actually ingest a .evtx file.
 python-evtx>=0.7.4
 
+# mcp[cli] is required ONLY for the MCP server (sentrylog_mcp.py). The CLI and
+# core pipeline do not need it. Pinned to the 1.x line: mcp 2.x reorganized the
+# SDK (FastMCP was renamed), which breaks the server on import. Built/tested on 1.28.
+mcp[cli]>=1.2,<2
+
 # Dev/test (optional): the test-suite is written to also run without pytest
 # (python tests/test_linux_auth.py), but pytest gives nicer output.
 # pytest>=7.0
